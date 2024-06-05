@@ -1,0 +1,1027 @@
+---
+- hosts: localhost
+  become: yes
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    aws_access_key: 
+    aws_secret_key: 
+    region: ap-northeast-1
+    nat_gateway_name: "TicketHub-NATGW"
+    key_name: "Project"
+    key_path: "/home/{{ ansible_user }}/{{ key_name }}.pem"
+    ami_name: "amzn2-ami-hvm-2.0.????????-x86_64-gp2"
+    jenkins_ami_id: "ami-01bef798938b7644d"
+    az1: "{{ region }}a"
+    az2: "{{ region }}c"
+
+  tasks:
+
+#Unused EIP Auto Release Before Run
+    - name: Gather information about all EIPs
+      ec2_eip_info:
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: eip_info
+
+    - name: Debug EIP Info
+      debug:
+        var: eip_info
+
+    - name: Filter unattached EIPs
+      set_fact:
+        unattached_eips: "{{ eip_info.addresses | selectattr('instance_id', 'undefined') | selectattr('network_interface_id', 'undefined') | list }}"
+
+    - name: Debug Unattached EIPs
+      debug:
+        var: unattached_eips
+
+    - name: Release unattached EIPs
+      ec2_eip:
+        state: absent
+        region: "{{ region }}"
+        public_ip: "{{ item.public_ip }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      loop: "{{ unattached_eips }}"
+      loop_control:
+        label: "{{ item.public_ip }}"
+      when: unattached_eips | length > 0
+
+#VPC 생성
+    - name: Create VPC 
+      ec2_vpc_net:
+        name: TicketHub-VPC
+        cidr_block: 10.0.0.0/16
+        region: "{{ region }}"
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: vpc_result
+
+#IGW 생성
+    - name: Create Internet Gateway 
+      ec2_vpc_igw:
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        tags:
+          Name: TicketHub-IGW
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: igw_result
+
+    - name: Debug IGW Result
+      debug:
+        var: igw_result
+
+
+
+    #예시 템플릿 부분
+    # - name: Create Public Subnet
+    #  ec2_vpc_subnet:
+    #    cidr: 10.1.0.0/24
+    #    vpc_id: "{{ vpc_result.vpc.id }}"
+    #    region: ap-northeast-1
+    #    az: ap-northeast-1a
+    #    map_public: yes
+    #    state: present
+    #    aws_access_key: "{{ aws_access_key }}"
+    #    aws_secret_key: "{{ aws_secret_key }}"
+    #  register: subnet_result
+
+#서브넷 생성부
+    - name: Create TicketHub-public-1a Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.1.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az1 }}"
+        map_public: yes
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_public_1a
+
+    - name: Tag TicketHub-public-1a Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_public_1a.subnet.id }}"
+        tags:
+          Name: "TicketHub-public-1a"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-2a Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.2.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az1 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_2a
+
+    - name: Tag TicketHub-private-2a Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_2a.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-2a"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-public-3c Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.3.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az2 }}"
+        map_public: yes
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_public_3c
+
+    - name: Tag TicketHub-public-3c Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_public_3c.subnet.id }}"
+        tags:
+          Name: "TicketHub-public-3c"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        
+    # NAT 게이트웨이 확인
+    - name: Check if NAT Gateway already exists
+      ec2_vpc_nat_gateway_info:
+        region: "{{ region }}"
+        filters:
+          "tag:Name": "{{ nat_gateway_name }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: nat_gateway_info
+
+    # 디버그로 NAT 게이트웨이 정보 출력
+    - name: Debug NAT Gateway Info
+      debug:
+        var: nat_gateway_info
+
+    # Ensure nat_gateways is defined and filter available NAT gateways
+    - name: Ensure nat_gateways is defined and filter available
+      set_fact:
+        nat_gateways: "{{ nat_gateway_info.result | selectattr('state', 'equalto', 'available') | list }}"
+
+    # 디버그로 NAT 게이트웨이 개수 확인
+    - name: Debug NAT Gateway Count
+      debug:
+        msg: "Number of available NAT Gateways: {{ nat_gateways | length }}"
+
+    # Set NAT Gateway ID if available
+    - name: Set NAT Gateway ID if available
+      set_fact:
+        nat_gateway_id: "{{ nat_gateways[0].nat_gateway_id }}"
+      when: nat_gateways | length > 0
+
+    # Debug NAT Gateway ID if available
+    - name: Debug NAT Gateway ID if available
+      debug:
+        msg: "NAT Gateway ID: {{ nat_gateway_id }}"
+      when: nat_gateways | length > 0
+
+    # NAT 게이트웨이 없는 경우 EIP 생성
+    - name: Allocate Elastic IP for NAT Gateway
+      ec2_eip:
+        state: present
+        region: "{{ region }}"
+        in_vpc: yes
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: eip_result
+      when: nat_gateways | length == 0
+
+    # EIP에 이름 태그 추가
+    - name: Tag Elastic IP with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ eip_result.allocation_id }}"
+        tags:
+          Name: "EIP_for_NATGW"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      when: nat_gateways | length == 0
+
+    # NAT 게이트웨이 생성
+    - name: Create NAT Gateway
+      ec2_vpc_nat_gateway:
+        state: present
+        region: "{{ region }}"
+        subnet_id: "{{ subnet_public_1a.subnet.id }}"
+        allocation_id: "{{ eip_result.allocation_id }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: nat_gateway_result
+      when: nat_gateways | length == 0
+
+    # Debug NAT Gateway Result
+    - name: Debug NAT Gateway Result
+      debug:
+        var: nat_gateway_result
+      when: nat_gateways | length == 0
+
+    # Set NAT Gateway ID if new NAT Gateway created
+    - name: Set NAT Gateway ID if new NAT Gateway created
+      set_fact:
+        nat_gateway_id: "{{ nat_gateway_result.nat_gateway_id }}"
+      when: nat_gateways | length == 0
+
+    # NAT 게이트웨이에 이름 태그 추가
+    - name: Tag NAT Gateway with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ nat_gateway_id }}"
+        tags:
+          Name: "{{ nat_gateway_name }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-4c Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.4.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az2 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_4c
+
+    - name: Tag TicketHub-private-4c Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_4c.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-4c"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-5a Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.5.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az1 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_5a
+
+    - name: Tag TicketHub-private-5a Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_5a.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-5a"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-6c Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.6.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az2 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_6c
+
+    - name: Tag TicketHub-private-6c Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_6c.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-6c"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-7a Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.7.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az1 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_7a
+
+    - name: Tag TicketHub-private-7a Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_7a.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-7a"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-8c Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.8.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az2 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_8c
+
+    - name: Tag TicketHub-private-8c Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_8c.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-8c"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    - name: Create TicketHub-private-9a Subnet
+      ec2_vpc_subnet:
+        cidr: 10.0.9.0/24
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        az: "{{ az1 }}"
+        map_public: no
+        state: present
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: subnet_private_9a
+
+    - name: Tag TicketHub-private-9a Subnet with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ subnet_private_9a.subnet.id }}"
+        tags:
+          Name: "TicketHub-private-9a"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+
+# Public 라우팅 테이블 생성 및 설정 - 수정된 부분
+    - name: Create and Associate Route Table With Public Subnets
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        tags:
+          Name: "TicketHub-public-RT"
+        subnets:
+          - "{{ subnet_public_1a.subnet.id }}"
+          - "{{ subnet_public_3c.subnet.id }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ igw_result.gateway_id }}"
+
+    # Debug NAT Gateway ID if available
+    - name: Debug NAT Gateway ID if available
+      debug:
+        msg: "NAT Gateway ID: {{ nat_gateway_id }}"
+
+        
+    - name: Create and Associate Route Table With Private Subnets
+      ec2_vpc_route_table:
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        tags:
+          Name: "Tickethub-private-RT"
+        subnets:
+          - "{{ subnet_private_2a.subnet.id }}" 
+          - "{{ subnet_private_4c.subnet.id }}"
+          - "{{ subnet_private_5a.subnet.id }}"
+          - "{{ subnet_private_6c.subnet.id }}"          
+          - "{{ subnet_private_7a.subnet.id }}"
+          - "{{ subnet_private_8c.subnet.id }}"
+          - "{{ subnet_private_9a.subnet.id }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        routes:
+          - dest: 0.0.0.0/0
+            gateway_id: "{{ nat_gateway_id }}"
+            
+# 기본 라우팅 테이블 조회
+    - name: Get default route table
+      ec2_vpc_route_table_info:
+        filters:
+          "vpc-id": "{{ vpc_result.vpc.id }}"
+          "association.main": "true"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: default_route_table_info
+
+
+    # 기본 라우팅 테이블 정보 디버그
+    - name: Debug default route table info
+      debug:
+        var: default_route_table_info
+
+        
+# 기본 라우팅 테이블 삭제
+    - name: Delete default route table
+      ec2_vpc_route_table:
+        route_table_id: "{{ default_route_table_info.route_tables[0].route_table_id }}"
+        vpc_id: "{{ vpc_result.vpc.id }}" # vpc_id 추가
+        region: "{{ region }}"
+        state: absent
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      when: default_route_table_info.route_tables | length > 0
+
+      
+# Bastion-SG 보안 그룹 생성
+    - name: Create Bastion Security Group 
+      ec2_group:
+        name: Bastion-SG
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        description: "Security group for Bastion host access"  # 설명 추가
+        rules:
+          - proto: tcp
+            from_port: 8080
+            to_port: 8080
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 3306
+            to_port: 3306
+            cidr_ip: 0.0.0.0/16
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        tags:
+          Name: Bastion-SG
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: bastion_security_group
+
+# Jenkins 보안 그룹 생성
+    - name: Create Jenkins Security Group
+      ec2_group:
+        name: Jenkins
+        description: "Security group for Jenkins server"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        rules:
+          - proto: tcp
+            from_port: 8080
+            to_port: 8080
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 0.0.0.0/0
+          - proto: tcp
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        tags:
+          Name: Jenkins
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: jenkins_security_group
+
+# Create Jenkins-NLB Security Group
+    - name: Create Jenkins-NLB Security Group
+      ec2_group:
+        name: Jenkins-NLB
+        description: "Security group for Jenkins NLB"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        rules:
+          - proto: tcp
+            from_port: 80
+            to_port: 80
+            cidr_ip: 0.0.0.0/0
+        tags:
+          Name: Jenkins-NLB
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: nlb_security_group
+
+#임시로(룰 없이) TicketHub-cluster-control-SG 생성
+    - name: Create initial TicketHub Cluster Control Security Group without rules
+      ec2_group:
+        name: TicketHub-cluster-control-SG
+        description: "Initial setup for TicketHub Cluster Control Security Group"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        tags:
+          Name: TicketHub-cluster-control-SG
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: cluster_control_security_group
+
+#임시로(룰 없이) TicketHub-worker-SG 생성
+    - name: Create TicketHub Workers Security Group without rules
+      ec2_group:
+        name: TicketHub-worker-SG
+        description: "Initial setup for TicketHub Workers Security Group"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        tags:
+          Name: TicketHub-worker-SG
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: workers_security_group
+      
+#임시로(룰 없이) TicketHub-db-sg 생성
+    - name: Create TicketHub Database Security Group without rules
+      ec2_group:
+        name: TicketHub-db-sg
+        description: "Initial setup for TicketHub Database Security Group"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        tags:
+          Name: TicketHub-db-sg
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: db_security_group
+
+#Update TicketHub Workers Security Group with rules
+    - name: Update TicketHub Workers Security Group with rules
+      ec2_group:
+        name: TicketHub-worker-SG
+        description: "Updated rules for TicketHub Workers Security Group"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        rules:
+          # 허용: TicketHub-db-sg에서 MySQL/Aurora 접속을 위한 3306 포트 개방
+          - proto: tcp
+            from_port: 3306
+            to_port: 3306
+            group_id: "{{ db_security_group.group_id }}"  # TicketHub-db-sg의 group_id 참조
+          # 허용: TicketHub-cluster-control-SG에서 사용자 지정 TCP 포트 범위 개방
+          - proto: tcp
+            from_port: 1025
+            to_port: 65535
+            group_id: "{{ cluster_control_security_group.group_id }}"  # Assuming cluster control group is already registered
+          # 허용: TicketHub-cluster-control-SG에서 HTTPS 접속을 위한 443 포트 개방
+          - proto: tcp
+            from_port: 443
+            to_port: 443
+            group_id: "{{ cluster_control_security_group.group_id }}"
+          # 허용: 자기 자신을 대상으로 모든 트래픽
+          - proto: all
+            from_port: 0
+            to_port: 65535
+            group_id: "{{ workers_security_group.group_id }}"
+        rules_egress:
+          # 허용: 모든 아웃바운드 트래픽
+          - proto: all
+            cidr_ip: "0.0.0.0/0"
+        purge_rules: no
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+
+#Update TicketHub Database Security Group with rules
+    - name: Update TicketHub Database Security Group with rules
+      ec2_group:
+        name: TicketHub-db-sg
+        description: "Database security group"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        rules:
+          - proto: tcp
+            from_port: 3306
+            to_port: 3306
+            group_id: "{{ workers_security_group.group_id }}"
+          - proto: tcp
+            from_port: 22
+            to_port: 22
+            cidr_ip: 0.0.0.0/0
+            #eks-cluster-sg-TicketHub-cluster를 위한 규칙이 하나 더 추가되어야 하는데 해당 시점에는 eks 생성 이전이라 처리가 어려움
+        rules_egress:
+          - proto: all
+            cidr_ip: 0.0.0.0/0
+        purge_rules: no
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+#Update TicketHub Database Security Group with rules
+    - name: Update TicketHub Cluster Control Security Group with rules
+      ec2_group:
+        name: TicketHub-cluster-control-SG
+        description: "Security group for TicketHub cluster control"
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        region: "{{ region }}"
+        state: present
+        rules:
+          - proto: tcp
+            from_port: 443
+            to_port: 443
+            group_id: "{{ workers_security_group.group_id }}"  # Reference to TicketHub-worker-SG
+        rules_egress:
+          - proto: all
+            cidr_ip: "0.0.0.0/0"
+        purge_rules: no
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+# Check if Key Pair File exists
+    - name: Check if Key Pair File exists
+      stat:
+        path: "{{ key_path }}"
+      register: key_file
+
+# Delete existing Key Pair if File does not exist
+    - name: Delete existing Key Pair if File does not exist
+      ec2_key:
+        name: "{{ key_name }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        state: absent
+      when: not key_file.stat.exists
+      ignore_errors: true
+
+# Create Key Pair if File does not exist
+    - name: Create Key Pair if not exists
+      ec2_key:
+        name: "{{ key_name }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: key_result
+      when: not key_file.stat.exists
+
+# Debug Key Result
+    - name: Debug Key Result
+      debug:
+        var: key_result
+
+# Save Key Pair to File if not exists
+    - name: Save Key Pair to File if not exists
+      copy:
+        content: "{{ key_result.key.private_key }}"
+        dest: "{{ key_path }}"
+        mode: '0600'
+      when: key_result.key is defined and 'private_key' in key_result.key
+
+#EC2 Part
+
+    # Search for the latest Amazon Linux 2 AMI with x86_64 architecture
+    - name: Search for Amazon Linux 2 AMI
+      ec2_ami_info:
+        region: "{{ region }}"
+        filters:
+          "name": "amzn2-ami-hvm-*-x86_64-gp2"
+          "owner-alias": "amazon"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: ami_facts
+
+    - name: Debug first AMI result
+      debug:
+        var: ami_facts.images[0]
+
+    - name: Set AMI ID
+      set_fact:
+        ami_id: "{{ ami_facts.images[0].image_id }}"
+      when: ami_facts.images | length > 0
+
+    # Allocate Elastic IP for Bastion
+    - name: Allocate Elastic IP for Bastion
+      ec2_eip:
+        state: present
+        region: "{{ region }}"
+        in_vpc: true
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: bastion_eip
+
+    # Tag Elastic IP with Name
+    - name: Tag Elastic IP with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ bastion_eip.allocation_id }}"
+        tags:
+          Name: "EIP_For_Bastion"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    # Check if Bastion instance already exists
+    - name: Check if Bastion instance already exists
+      ec2_instance_info:
+        filters:
+          "tag:Name": "Bastion"
+          instance-state-name:
+            - "pending"
+            - "running"
+            - "stopping"
+            - "stopped"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: bastion_instance_info
+
+    - name: Set Bastion instance ID if already exists
+      set_fact:
+        bastion_instance_id: "{{ bastion_instance_info.instances[0].instance_id }}"
+      when: bastion_instance_info.instances | length > 0
+
+    # Launch Bastion EC2 Instance if not exists
+    - name: Launch Bastion EC2 Instance
+      ec2_instance:
+        key_name: "{{ key_name }}"
+        region: "{{ region }}"
+        instance_type: "t2.micro"
+        image_id: "{{ ami_id }}"
+        tags:
+          Name: "Bastion"
+        subnet_id: "{{ subnet_public_1a.subnet.id }}"
+        network:
+          assign_public_ip: true
+        security_groups: 
+          - "Bastion-SG"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+        wait: no
+      register: ec2_instance
+      when: bastion_instance_info.instances | length == 0
+
+    - name: Set Bastion instance ID if created
+      set_fact:
+        bastion_instance_id: "{{ ec2_instance.instance_ids[0] }}"
+      when: bastion_instance_info.instances | length == 0
+
+    - name: Debug EC2 Instance
+      debug:
+        var: bastion_instance_id
+
+    # Wait for Bastion instance to be in running state
+    - name: Wait for Bastion instance to be in running state
+      ec2_instance_info:
+        instance_ids: "{{ bastion_instance_id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: bastion_instance_running_info
+      until: bastion_instance_running_info.instances[0].state.name == 'running'
+      retries: 10
+      delay: 3
+      failed_when: false  # This ensures the task does not fail even if the condition is not met
+
+    - name: Debug Bastion instance running info
+      debug:
+        msg: "Bastion instance running info: {{ bastion_instance_running_info.instances }}"
+
+    - name: Debug Bastion instance state
+      debug:
+        msg: "Bastion instance state: {{ bastion_instance_running_info.instances[0].state.name }}"
+
+    # Associate Elastic IP with EC2 Instance
+    - name: Associate Elastic IP with EC2 Instance
+      ec2_eip:
+        state: present
+        instance_id: "{{ bastion_instance_id }}"
+        public_ip: "{{ bastion_eip.public_ip }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      when: bastion_instance_running_info.instances[0].state.name == 'running'
+      ignore_errors: true
+
+    # Final check for Bastion instance state
+    - name: Final check for Bastion instance state
+      ec2_instance_info:
+        instance_ids: "{{ bastion_instance_id }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: final_bastion_instance_info
+
+    - name: Debug Final Bastion instance state
+      debug:
+        msg: "Final Bastion instance state: {{ final_bastion_instance_info.instances[0].state.name }}"
+
+
+#Jenkins Server EC2 from here
+
+    # Jenkins EC2 생성 및 설정
+    # Search for the latest Ubuntu 24.04 LTS AMI with x86_64 architecture
+    # Set Jenkins AMI ID directly
+    - name: Allocate Elastic IP for Jenkins Server
+      ec2_eip:
+        state: present
+        region: "{{ region }}"
+        in_vpc: yes
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: jenkins_eip
+
+    # Tag Elastic IP with Name
+    - name: Tag Elastic IP with Name
+      ec2_tag:
+        region: "{{ region }}"
+        resource: "{{ jenkins_eip.allocation_id }}"
+        tags:
+          Name: "EIP_For_Jenkins_Server"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+
+    # Check if Jenkins Server instance already exists
+    - name: Check if Jenkins Server instance already exists
+      ec2_instance_info:
+        filters:
+          "tag:Name": "Jenkins Server"
+          instance-state-name:
+            - "running"
+            - "stopped"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: jenkins_instance_info
+
+    # Set Jenkins Server instance ID if already exists
+    - name: Set Jenkins Server instance ID if already exists
+      set_fact:
+        jenkins_instance_id: "{{ jenkins_instance_info.instances[0].instance_id }}"
+      when: jenkins_instance_info.instances | length > 0
+
+#Unused EIP Release 
+    - name: Gather information about all EIPs after EC2 created
+      ec2_eip_info:
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: eip_info
+
+    - name: Debug EIP Info
+      debug:
+        var: eip_info
+
+    - name: Filter unattached EIPs after EC2 created
+      set_fact:
+        unattached_eips: "{{ eip_info.addresses | selectattr('instance_id', 'undefined') | selectattr('network_interface_id', 'undefined') | list }}"
+
+    - name: Debug Unattached EIPs after EC2 created
+      debug:
+        var: unattached_eips
+
+    - name: Release unattached EIPs after EC2 created
+      ec2_eip:
+        state: absent
+        region: "{{ region }}"
+        public_ip: "{{ item.public_ip }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      loop: "{{ unattached_eips }}"
+      loop_control:
+        label: "{{ item.public_ip }}"
+      when: unattached_eips | length > 0
+
+    # Launch Jenkins EC2 Instance
+    - name: Launch Jenkins EC2 Instance 
+      ec2_instance:
+        key_name: "{{ key_name }}"
+        region: "{{ region }}"
+        instance_type: "t3.medium"
+        image_id: "ami-01bef798938b7644d"
+        wait: no
+        tags:
+          Name: "Jenkins-Server"
+        vpc_subnet_id: "{{ subnet_private_9a.subnet.id }}"
+        security_groups: 
+          - "Jenkins"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: jenkins_ec2_instance
+      when: jenkins_instance_info.instances | length == 0
+
+
+#From here, Load Balancing
+# Check if Jenkins Server instance already exists and is running
+    - name: Check if Jenkins Server instance is running
+      ec2_instance_info:
+        filters:
+          "tag:Name": "Jenkins-Server"
+          instance-state-name: "running"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: jenkins_instance_running_info
+
+    # Start Jenkins Server instance if it is stopped
+    - name: Start Jenkins Server instance if it is stopped
+      ec2:
+        instance_ids: "{{ jenkins_instance_info.instances[0].instance_id }}"
+        region: "{{ region }}"
+        state: running
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      when: jenkins_instance_info.instances | length > 0 and jenkins_instance_running_info.instances | length == 0
+      register: start_jenkins_instance
+
+    # Wait for Jenkins Server instance to be in running state
+    - name: Wait for Jenkins Server instance to be running
+      ec2_instance:
+        instance_ids: "{{ jenkins_instance_info.instances[0].instance_id }}"
+        region: "{{ region }}"
+        state: running
+        wait: yes
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      when: jenkins_instance_info.instances | length > 0 and jenkins_instance_running_info.instances | length == 0
+
+# Create Target Group for Jenkins
+    - name: Create Target Group for Jenkins
+      elb_target_group:
+        name: Jenkins
+        protocol: TCP
+        port: 8080
+        vpc_id: "{{ vpc_result.vpc.id }}"
+        health_check_protocol: TCP
+        health_check_port: 8080
+        target_type: instance
+        state: present
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: target_group_result
+
+    - name: Debug Target Group Result
+      debug:
+        var: target_group_result
+
+    - name: Get Jenkins Server Instance ID
+      ec2_instance_info:
+        filters:
+          "tag:Name": "Jenkins-Server"
+          instance-state-name: "running"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: jenkins_instance_info
+
+    - name: Debug Jenkins Server Instance Info
+      debug:
+        var: jenkins_instance_info
+
+    - name: Register Jenkins Server to Target Group
+      elb_target:
+        target_group_arn: "{{ target_group_result.target_group_arn }}"
+        target_id: "{{ jenkins_instance_info.instances[0].instance_id }}"
+        target_port: 8080
+        state: present
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      when: jenkins_instance_info.instances | length > 0
+
+# Create Network Load Balancer for Jenkins
+    - name: Create Network Load Balancer for Jenkins
+      elb_network_lb:
+        name: "Jenkins-NLB"
+        state: present
+        subnet_mappings:
+          - SubnetId: "{{ subnet_public_1a.subnet.id }}"
+          - SubnetId: "{{ subnet_public_3c.subnet.id }}"
+        scheme: "internet-facing"
+        ip_address_type: "ipv4"
+        listeners:
+          - Protocol: TCP
+            Port: 80
+            DefaultActions:
+              - Type: forward
+                TargetGroupArn: "{{ target_group_result.target_group_arn }}"
+        region: "{{ region }}"
+        aws_access_key: "{{ aws_access_key }}"
+        aws_secret_key: "{{ aws_secret_key }}"
+      register: nlb_result
+
+    - name: Debug Network Load Balancer Result
+      debug:
+        var: nlb_result
