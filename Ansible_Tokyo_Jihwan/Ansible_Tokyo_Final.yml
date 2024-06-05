@@ -4,8 +4,8 @@
 
   vars:
     ansible_python_interpreter: /usr/bin/python3
-    aws_access_key: 
-    aws_secret_key: 
+    aws_access_key: #깃허브 업로드 위해 임시 제거
+    aws_secret_key: #깃허브 업로드 위해 임시 제거
     region: ap-northeast-1
     nat_gateway_name: "TicketHub-NATGW"
     key_name: "Project"
