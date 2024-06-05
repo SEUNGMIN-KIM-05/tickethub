@@ -1,0 +1,14 @@
+---
+
+  - name: get vpc tags
+    ec2_vpc_info:
+      region: "{{ aws_region }}"
+      filters:
+        tag:name: "osaka-VPC"
+    register: vpc_facts
+
+  - name: get subnet tags 
+    ec2_subnet_info:
+    region: "{{ aws_region }}"
+    
+    

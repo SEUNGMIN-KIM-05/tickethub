@@ -1,0 +1,6 @@
+---
+aws_region: ap-northeast-3
+vpc_name: tickethub-vpc
+vpc_cidr_block: 10.0.0.0/16
+ec2_key_name: seoul
+az : northeast-3a 

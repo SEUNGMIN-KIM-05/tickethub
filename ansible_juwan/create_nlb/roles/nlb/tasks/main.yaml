@@ -1,0 +1,21 @@
+---
+
+  - name: create NLB
+    elb_network_lb:
+      name: tickethub-LB
+      state: present
+      subnets: "{{ nlb_subnets }}"
+      scheme: "{{ nlb_scheme }}"
+      region: "{{ aws_region }}"
+      listeners:
+        - Protocol: TCP
+          Port: 80
+          DefaultActions:
+            - TargetGroupArn: "{{ target_group_result_80.target_group_arn }}"
+              Type: forward
+        - Protocol: TCP
+          Port: 8080
+          DefaultActions:
+            - TargetGroupArn: "{{ target_group_result_8080.target_group_arn }}"
+              Type: forward
+    register: nlb

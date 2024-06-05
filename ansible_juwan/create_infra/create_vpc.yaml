@@ -1,0 +1,19 @@
+---
+
+- name: aws-vpc-provisioning
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files: group_vars/var.yaml
+  roles:
+    - role: vpc
+    - role: subnet
+    - role: igw
+    - role: nat_gw
+    - role: public_route_table
+    - role: private_route_table
+    - role: sg
+  
+    
+    
+## vpc

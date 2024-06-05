@@ -1,0 +1,33 @@
+
+
+---
+   - name: get nat gateway id
+     ec2_vpc_nat_gateway_info:
+       region: "{{ aws_region }}"
+     register: nat_gate_info
+   
+   - name: debug nat_gate_info
+     debug:
+       var: nat_gate_info
+
+   - name: associate route table with private subnets
+     ec2_vpc_route_table:
+       vpc_id: "{{ tickethub_vpc.vpc.id }}"
+       region: "{{ aws_region }}"
+       state: present
+       tags:
+         name: tickethub_private_RT
+       subnets:
+         - "{{ tickethub_private_3a.subnet.id }}"
+         - "{{ tickethub_private_4c.subnet.id }}"
+         - "{{ tickethub_private_5a.subnet.id }}"
+         - "{{ tickethub_private_6c.subnet.id }}"
+         - "{{ tickethub_private_7a.subnet.id }}"
+         - "{{ tickethub_private_8c.subnet.id }}"
+         - "{{ tickethub_private_9a.subnet.id }}"
+       routes:
+         - dest: 0.0.0.0/0
+           gateway_id: "{{ nat_gate_info.result[0].nat_gateway_id }}"
+     register: tickethub_private_RT
+
+    

@@ -1,0 +1,12 @@
+---
+- name: aws-nlb-provisioning
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files: group_vars/var.yaml
+  roles:
+    - role: ec2
+    - role: target_group
+    - role: nlb
+
+

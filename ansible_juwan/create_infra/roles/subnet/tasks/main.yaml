@@ -1,0 +1,104 @@
+---
+
+  - name: create public_subnet-1a
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.1.0/24
+      map_public: yes
+      az: ap-northeast-3a
+      tags:
+        name: tickethub_public_1a
+    register: tickethub_public_1a
+
+  - name: create public_subnet-2c
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.2.0/24
+      map_public: yes
+      az: ap-northeast-3c
+      tags:
+        name: tickethub_public_2c
+    register: tickethub_public_2c
+
+  - name: create pvivate_subnet-3a
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.3.0/24
+      az: ap-northeast-3a
+      tags:
+        name: tickethub_private_3a
+    register: tickethub_private_3a
+
+  - name: create pvivate_subnet-4c
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.4.0/24
+      az: ap-northeast-3c
+      tags:
+        name: tickethub_private_4c
+    register: tickethub_private_4c
+
+  - name: create pvivate_subnet-5a
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.5.0/24
+      az: ap-northeast-3a
+      tags:
+        name: tickethub_private_5a
+    register: tickethub_private_5a
+
+  - name: create pvivate_subnet-6c
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.6.0/24
+      az: ap-northeast-3c
+      tags:
+        name: tickethub_private_6c
+    register: tickethub_private_6c
+
+  - name: create pvivate_subnet-7a
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.7.0/24
+      az: ap-northeast-3a
+      tags:
+        name: tickethub_private_7a
+    register: tickethub_private_7a
+
+  - name: create pvivate_subnet-8c
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.8.0/24
+      az: ap-northeast-3c
+      tags:
+        name: tickethub_private_8c
+    register: tickethub_private_8c
+    
+  - name: create pvivate_subnet-8c
+    ec2_vpc_subnet:
+      state: present
+      region: "{{aws_region}}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      cidr: 10.0.9.0/24
+      az: ap-northeast-3c
+      tags:
+        name: tickethub_private_9a
+    register: tickethub_private_9a
+
+    

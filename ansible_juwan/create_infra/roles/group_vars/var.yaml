@@ -1,0 +1,6 @@
+---
+aws_region: ap-northeast-3
+vpc_name: osaka-VPC
+vpc_cidr_block: 10.0.0.0/16
+ec2_key_name: osaka_1
+az : northeast-3a northeast-3c

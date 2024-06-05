@@ -1,0 +1,27 @@
+---
+
+
+- name: check if nat gateway already exists
+  ec2_vpc_nat_gateway_info:
+    region: "{{ aws_region }}"
+    filters:
+      vpc-id: "{{ tickethub_vpc.vpc.id }}"
+  register: nat_gateway_info
+
+- name: debug nat gateway info
+  debug:
+    var: nat_gateway_info
+
+- name: create nat gateway if not exists
+  ec2_vpc_nat_gateway:
+    subnet_id: "{{ tickethub_public_1a.subnet.id }}"
+    state: present
+    region: "{{ aws_region }}"
+    wait: true
+  when: nat_gateway_info.result | length == 0      
+  register: tickethub_NATGW
+
+- name: debug nat gateway
+  debug:
+    var: tickethub_NATGW 
+    

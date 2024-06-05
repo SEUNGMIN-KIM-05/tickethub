@@ -1,0 +1,16 @@
+---
+
+  - name: create target group
+    elb_target:
+      name: osaka-target-group
+      protocol: TCP
+      port: 80
+      state: present
+      vpc_id: "{{ osaka_vpc.id }}"
+      target_id: "{{ osaka_jenkins_ec2.id }}"
+    register: osaka_target
+      
+ 
+    
+    
+      

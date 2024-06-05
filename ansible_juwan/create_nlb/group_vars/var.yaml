@@ -1,0 +1,21 @@
+---
+
+aws_region: ap-northeast-3
+vpc_name: tickethub-VPC
+vpc_cidr_block: 10.0.0.0/16
+ec2_key_name: seoul
+az : northeast-3a 
+tickethub_vpc_id : vpc-041a491bac658520f
+target_groups:
+ - name: tickethub-target-80
+   port: 80
+   protocol: HTTP
+   health_check_path: /login
+ - name: tickethub-target-8080
+   port: 8080
+   protocol: HTTP
+   health_check_path: / 
+nlb_scheme: internet-facing
+nlb_subnets: # 퍼블릭 서브넷 
+ - subnet-0772fca1c52a98fec
+ - subnet-0292a8a20162d59df

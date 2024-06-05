@@ -1,0 +1,40 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: tickethub1
+  region: ap-northeast-3
+  version: "1.27"
+  
+vpc:
+  id: vpc-041a491bac658520f
+  subnets:
+    private:
+      ap-northeast-3a: 
+        ids: 
+          - subnet-0d8ae3f720090af05
+          - subnet-03b4db0827db6e639 
+      ap-northeast-3c: 
+        ids: 
+          - subnet-0b764c4cf469aca83
+          - subnet-0d82fddae2d3ddc01 
+      
+managednodeGroups:
+  - name: tickethub-worker-frontend
+    instanceType: t3.medium
+    desiredCapacity: 2
+    privateNetworking: true
+    ssh:
+      allow: true
+      publicKeyName: seoul
+    
+  - name: tickethub-worker-backend
+    instanceType: t3.medium
+    desiredCapacity: 2
+    privateNetworking: true
+    ssh:
+      allow: true
+      publicKeyName: seoul
+iam:
+  withOIDC: true
+  

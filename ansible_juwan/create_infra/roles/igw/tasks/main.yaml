@@ -1,0 +1,12 @@
+---
+
+  - name: creat igw 
+    ec2_vpc_igw:
+      region: "{{ aws_region }}"
+      vpc_id: "{{ tickethub_vpc.vpc.id }}"
+      state: present
+      tags:
+        name: tickethub_igw
+    register: tickethub_igw
+
+

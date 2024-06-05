@@ -1,0 +1,18 @@
+---
+
+  - name: create vpc peering connection
+    ec2_vpc_peer:
+      peer_region: "{{ aws_region }}"
+      peer_vpc_id: "{{ osaka_vpc }}"
+      vpc_id: "{{ default_vpc_id }}"
+      tags:
+        name: osaka_peering
+    register: vpc_peer
+      
+  - name: accept vpc peering request
+    ec2_vpc_peer:
+      region: "{{ aws_region }}"
+      peering_id: "{{ vpc_peer.peering_id }}"
+      state: accept
+    register: action_peer
+    

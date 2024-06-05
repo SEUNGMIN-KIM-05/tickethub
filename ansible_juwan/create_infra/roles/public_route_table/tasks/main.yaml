@@ -1,0 +1,15 @@
+---
+
+  - name: set up public subnet route table
+    ec2_vpc_route_table:
+      vpc_id : "{{ tickethub_vpc.vpc.id }}"
+      region: "{{ aws_region }}"
+      tags:
+        name: osaka_public_RT
+      subnets:
+        - "{{tickethub_public_1a.subnet.id}}"
+        - "{{tickethub_public_2c.subnet.id}}"
+      routes:
+        - dest: 0.0.0.0/0
+          gateway_id: "{{ tickethub_igw.gateway_id }}"
+    register: tickethub_public_RT        

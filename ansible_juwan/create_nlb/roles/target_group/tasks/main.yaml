@@ -1,0 +1,63 @@
+---
+
+  - name: create target_group
+    elb_target_group:
+      name: "tickethub-target-80"
+      protocol: TCP
+      port: "80"
+      vpc_id: "{{ tickethub_vpc_id }}"
+      state: present
+      health_check_protocol: TCP
+      health_check_port: "80"
+      health_check_path: "/login"
+      health_check_interval: 30
+      health_check_timeout: 5
+      healthy_threshold_count: 5
+      unhealthy_threshold_count: 2
+      stickiness_enabled: no
+      stickiness_type: source_ip
+      region: "{{ aws_region }}"
+    register: target_group_result_80
+
+  - name: debug target_group_result
+    debug:
+      var: target_group_result_80
+
+  - name: instance to target
+    elb_target:
+      target_group_arn: "{{ target_group_result_80.target_group_arn }}"
+      target_id : "{{ tickethub_jenkins_ec2.instance_ids[0] }}"
+      state: present
+      target_port: 80
+      region: "{{ aws_region }}"
+
+  - name: create target_group
+    elb_target_group:
+      name: "tickethub-target-8080"
+      protocol: TCP
+      port: "8080"
+      vpc_id: "{{ tickethub_vpc_id }}"
+      state: present
+      health_check_protocol: TCP
+      health_check_port: "8080"
+      health_check_path: "/"
+      health_check_interval: 30
+      health_check_timeout: 5
+      healthy_threshold_count: 5
+      unhealthy_threshold_count: 2
+      stickiness_enabled: no
+      stickiness_type: source_ip
+      region: "{{ aws_region }}"
+    register: target_group_result_8080
+
+  - name: debug target_group_result
+    debug:
+      var: target_group_result_8080
+
+  - name: instance to target
+    elb_target:
+      target_group_arn: "{{ target_group_result_8080.target_group_arn }}"
+      target_id : "{{ tickethub_jenkins_ec2.instance_ids[0] }}"
+      state: present
+      target_port: 8080
+      region: "{{ aws_region }}"
