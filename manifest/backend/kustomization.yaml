@@ -1,0 +1,13 @@
+namePrefix: prod-
+resources:
+- backend-deployment.yaml
+- backend-service.yaml
+- internal-alb.yaml
+commonLabels:
+  app: tickethub
+  tier: backend
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: 814835082161.dkr.ecr.ap-northeast-2.amazonaws.com/tickethub-backend
+  newTag: "9"

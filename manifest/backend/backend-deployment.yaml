@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  labels:
+    app: tickethub
+    tier: backend
+spec:
+  selector:
+    matchLabels:
+      app: tickethub
+      tier: backend
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: tickethub
+        tier: backend
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                - key: tier
+                  operator: In
+                  values:
+                  - backend
+      containers:
+      - image: 814835082161.dkr.ecr.ap-northeast-2.amazonaws.com/tickethub-backend:latest
+        imagePullPolicy: Always
+        name: backend-container
+        ports:
+        - containerPort: 9001
+        env:
+        - name: SPRING_DATASOURCE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: db-config
+              key: url
+        - name: SPRING_DATASOURCE_USERNAME
+          valueFrom:
+            configMapKeyRef:
+              name: db-config
+              key: username
+        - name: SPRING_DATASOURCE_PASSWORD
+          valueFrom:
+            configMapKeyRef:
+              name: db-config
+              key: password
+        - name: SPRING_JWT_SECRET
+          valueFrom:
+            configMapKeyRef:
+              name: jwt-config
+              key: jwt
