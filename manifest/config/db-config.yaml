@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-config
+data:
+  url: [AWS RDS 엔드포인트]
+  username: [USERNAME]
+  password: [PASSWORD]
