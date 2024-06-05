@@ -1,0 +1,29 @@
+server:
+  port: 9001
+
+spring:
+  application:
+    name: tickethub-backend
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${URL}
+    username: ${USERNAME}
+    password: ${PASSWORD}
+  sql:
+    init:
+      mode: always
+
+  jpa:
+    database:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create
+    defer-datasource-initialization: true
+    show-sql: true
+    generate-ddl: false
+    properties:
+      hibernate.format_sql: true
+      dialect: org.hibernate.dialect.MySQL8InnoDBDialect
+
+  jwt:
+    secret: ${JWT}
