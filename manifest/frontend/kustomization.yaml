@@ -1,0 +1,13 @@
+namePrefix: prod-
+resources:
+- frontend-deployment.yaml
+- frontend-service.yaml
+- ingress-alb.yaml
+commonLabels:
+  app: tickethub
+  tier: frontend
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+images:
+- name: 814835082161.dkr.ecr.ap-northeast-2.amazonaws.com/tickethub-frontend
+  newTag: "50"
